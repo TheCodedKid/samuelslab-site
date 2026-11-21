@@ -125,14 +125,16 @@ function splitCode(body) {
     else segs.push({ code, text })
   }
   const lines = body.split(/(?<=\n)/)
-  let fence = null // { mark, quote, indent }
+  let fence = null // { mark, quote, indent, inList }
   let buf = ''
+  let listIndent = null // content indent of the list item we are in, if any
   for (const line of lines) {
+    const c = containerOf(line)
+    const blank = line.replace(/^[ \t>]*/, '').trim() === ''
     if (fence) {
-      const c = containerOf(line)
-      const blank = line.replace(/^[ \t>]*/, '').trim() === ''
-      const leftContainer =
-        c.quote < fence.quote || (fence.quote === 0 && fence.indent > 0 && !blank && c.indent < fence.indent)
+      // Only container fences (blockquote, list item) close when their container ends;
+      // a top-level fence (even indented 1-3 spaces) closes only on a matching fence.
+      const leftContainer = c.quote < fence.quote || (fence.inList && !blank && c.indent < fence.indent)
       if (leftContainer) {
         push(true, buf)
         buf = ''
@@ -153,9 +155,12 @@ function splitCode(body) {
     if (open && !(open[1][0] === '`' && line.slice(open[0].length).includes('`'))) {
       splitInline(buf, push)
       buf = line
-      fence = { mark: open[1], ...containerOf(line) }
+      fence = { mark: open[1], ...c, inList: c.quote === 0 && listIndent !== null && c.indent > 0 }
       continue
     }
+    const lm = c.quote === 0 && line.match(/^[ \t]*(?:[-*+]|\d{1,9}[.)])(?:[ \t]+|(?=\n)|$)/)
+    if (lm) listIndent = lm[0].replace(/\t/g, '    ').length
+    else if (!blank && c.quote === 0 && c.indent === 0) listIndent = null
     buf += line
   }
   if (fence) push(true, buf)
@@ -202,45 +207,96 @@ function splitInline(text, push) {
 }
 
 const BR = String.raw`(?:[^\[\]\n]|\[[^\[\]\n]*\])` // one char, or one level of nested [..]
-const WIKI = String.raw`(!?)\[\[(${BR}*?)\]\]`
+const WIKI = String.raw`(!?)\[\[((?:${BR}|\n(?![ \t]*\n))*?)\]\]`
 const MD =
   String.raw`(!?)\[(${BR}*)\]` +
   String.raw`\(\s*(<[^<>\n]*>|(?:[^()\n]|\([^()\n]*\))+?)` +
   String.raw`(\s+(?:"[^"\n]*"|'[^'\n]*'|\([^()\n]*\)))?\s*\)`
 const REF = String.raw`(!?)\[(${BR}*)\](?:\[([^\[\]\n]*)\])?`
 const LINK_RE = new RegExp(`${WIKI}|${MD}|${REF}`, 'g')
+// [label]: dest "title" -- allowing a blockquote/list container prefix and the
+// destination on the following line.
 const DEF_RE =
-  /^( {0,3})\[([^\]\n^][^\]\n]*)\]:[ \t]*(<[^<>\n]*>|\S+)([ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^()\n]*\)))?[ \t]*(?:\n|$)/gm
+  /^((?:[ \t]*>)*[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)?[ \t]*)\[([^\]\n^][^\]\n]*)\]:[ \t]*(?:\n(?:[ \t]*>)*[ \t]*)?(<[^<>\n]*>|[^\s<]\S*)([ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^()\n]*\)))?[ \t]*(?:\n|$)/gm
 const HTML_A =
   /<a\b([^>]*?)(?<=\s)href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))([^>]*)>([\s\S]*?)<\/a\s*>/gi
-const HTML_IMG = /<img\b([^>]*?)(?<=\s)src\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))([^>]*)>/gi
+const HTML_TAG =
+  /<([a-zA-Z][\w-]*)\b([^>]*?)(?<=\s)(href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))([^>]*)>/g
+const URL_ATTR =
+  /(?:^|\s)(href|src|srcset|poster|data|action|formaction|cite|background)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi
 
-const PH = /(\d+)/g
+/** True if an HTML tag (or attribute string) has any URL attribute with a relative value. */
+function hasRelativeUrlAttr(tag) {
+  for (const m of tag.matchAll(URL_ATTR)) {
+    const v = (m[2] ?? m[3] ?? m[4] ?? '').trim()
+    const urls = m[1].toLowerCase() === 'srcset' ? v.split(',').map((x) => x.trim().split(/\s+/)[0]) : [v]
+    if (urls.some((u) => u && !isExternal(u))) return true
+  }
+  return false
+}
+
+const PH = /\uE000(\d+)\uE001/g
 const normLabel = (l) => l.trim().replace(/\s+/g, ' ').toLowerCase()
 
+const MD_TAIL =
+  /\]\(\s*(<[^<>\n]*>|(?:[^()\n]|\([^()\n]*\))*?)(\s+(?:"[^"\n]*"|'[^'\n]*'|\([^()\n]*\)))?\s*\)/g
+
+function isRelativeMdUrl(raw) {
+  let u = raw.trim()
+  if (u.startsWith('<') && u.endsWith('>')) u = u.slice(1, -1).trim()
+  if (!u || isExternal(u)) return false
+  return /\.md$/i.test(safeDecode(u.split('#')[0]).trim())
+}
+
+/** Replace every `[...](relative .md)` (any bracket nesting) by its text; embeds are removed. */
+function stripMdLinks(text) {
+  for (;;) {
+    let hit = null
+    for (const m of text.matchAll(MD_TAIL)) {
+      if (isRelativeMdUrl(m[1])) {
+        hit = m
+        break
+      }
+    }
+    if (!hit) return text
+    const close = hit.index
+    const end = close + hit[0].length
+    let depth = 0
+    let open = -1
+    for (let j = close - 1; j >= 0; j--) {
+      if (text[j] === ']') depth++
+      else if (text[j] === '[') {
+        if (depth === 0) {
+          open = j
+          break
+        }
+        depth--
+      }
+    }
+    if (open === -1) {
+      text = text.slice(0, close) + text.slice(end)
+      continue
+    }
+    const bang = open > 0 && text[open - 1] === '!'
+    text = text.slice(0, bang ? open - 1 : open) + (bang ? '' : text.slice(open + 1, close)) + text.slice(end)
+  }
+}
+
 /**
- * Last line of defence, run on already-rewritten non-code text: any wikilink, embed or
- * relative Markdown link to a `.md` target still present is reduced to plain text.
+ * Last line of defence, run on already-rewritten non-code text: any wikilink, embed,
+ * relative Markdown link to a `.md` target, or HTML tag with a relative URL attribute that
+ * is still present is reduced to plain text / removed.
  * (Links emitted by rewriteLinks are hidden behind placeholders while this runs.)
  */
 export function failSafe(text) {
-  return text
-    .replace(/(!?)\[\[([^\n]*?)\]\]/g, (whole, bang, inner) => {
-      const target = inner.split('|')[0].replace(/\\+$/, '')
-      const pathPart = target.split('#')[0].trim()
-      if (!pathPart) return whole
-      return bang ? '' : stripMd(lastSeg(pathPart))
-    })
-    .replace(/(!?)\[([^\[\]\n]*)\]\(((?:[^()\n]|\([^()\n]*\))*)\)/g, (whole, bang, text, url) => {
-      let u = url.trim()
-      if (u.startsWith('<')) u = u.slice(1, u.indexOf('>') === -1 ? undefined : u.indexOf('>'))
-      else u = u.replace(/\s+(?:"[^"]*"|'[^']*'|\([^()]*\))\s*$/, '')
-      u = u.trim()
-      if (!u || isExternal(u)) return whole
-      const p = safeDecode(u.split('#')[0]).trim()
-      if (!/\.md$/i.test(p)) return whole
-      return bang ? '' : text
-    })
+  text = text.replace(/(!?)\[\[((?:[^\n]|\n(?![ \t]*\n))*?)\]\]/g, (whole, bang, inner) => {
+    const target = inner.split('|')[0].replace(/\\+$/, '')
+    const pathPart = target.split('#')[0].trim()
+    if (!pathPart) return whole
+    return bang ? '' : stripMd(lastSeg(pathPart))
+  })
+  text = stripMdLinks(text)
+  return text.replace(/<[a-zA-Z][^>]*>/g, (tag) => (hasRelativeUrlAttr(tag) ? '' : tag))
 }
 
 /**
@@ -262,7 +318,7 @@ export function rewriteLinks(body, ctx) {
   const hold = (s) => {
     rewritten++
     kept.push(s)
-    return `${kept.length - 1}`
+    return `\uE000${kept.length - 1}\uE001`
   }
 
   /** Resolve a decoded path. -> {kind:'pub', url} | {kind:'att', url} | {kind:'hidden'} */
@@ -341,7 +397,7 @@ export function rewriteLinks(body, ctx) {
     if (c.kind === 'hidden') return bang ? '' : newText
     rewritten++
     kept.push(`](${c.href}${title})`)
-    return `${bang}[${newText}${kept.length - 1}`
+    return `${bang}[${newText}\uE000${kept.length - 1}\uE001`
   }
 
   const ref = (whole, bang, text, label) => {
@@ -363,17 +419,19 @@ export function rewriteLinks(body, ctx) {
       .replace(HTML_A, (whole, before, q1, q2, q3, after, inner) => {
         const c = classifyUrl(q1 ?? q2 ?? q3 ?? '')
         if (c === null) return whole
-        if (c.kind === 'hidden') return inner
+        if (c.kind === 'hidden' || hasRelativeUrlAttr(before + ' ' + after)) return inner
         return hold(`<a${before}href="${c.href}"${after}>`) + inner + '</a>'
       })
-      .replace(HTML_IMG, (whole, before, q1, q2, q3, after) => {
+      // any other tag with href/src, including a lone or unclosed <a ...>
+      .replace(HTML_TAG, (whole, tag, before, attr, q1, q2, q3, after) => {
         const c = classifyUrl(q1 ?? q2 ?? q3 ?? '')
         if (c === null) return whole
-        if (c.kind === 'hidden') return ''
-        return hold(`<img${before}src="${c.href}"${after}>`)
+        if (c.kind === 'hidden' || hasRelativeUrlAttr(before + ' ' + after)) return ''
+        return hold(`<${tag}${before}${attr}="${c.href}"${after}>`)
       })
 
-  const segs = splitCode(body)
+  // placeholder delimiters are reserved; neutralize any in the input
+  const segs = splitCode(body.replace(/[\uE000\uE001]/g, '\uFFFD'))
 
   // Pass 1: reference definitions (global, since they may follow their uses).
   const dropped = new Set()

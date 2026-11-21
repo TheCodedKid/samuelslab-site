@@ -296,3 +296,80 @@ test('minor: trailing backslash in wikilink target dropped', () => {
   noLeak(o)
   assert.equal(o, 'secret-diary')
 })
+
+// --- review round 2 ---
+
+test('r2-1: top-level fence indented 1-3 spaces closes only on a matching fence', () => {
+  for (const tail of ['[[Dailys/2026/secret-diary]]', '[x](Dailys/2026/secret-diary.md)']) {
+    const o = out('  ```\nfoo\n  ```\n  ' + tail)
+    noLeak(o.split('```').at(-1))
+    assert.ok(o.startsWith('  ```\nfoo\n  ```\n  '), o)
+  }
+  const s = '  ```\nfoo [[secret-diary]]\n  ```\n'
+  assert.equal(out(s), s)
+})
+test('r2-2: link text with two levels of nested brackets', () => {
+  const o = out('[a [b [c]]](Dailys/2026/secret-diary.md) and ![i [j [k]]](Dailys/2026/secret-diary.md#h)')
+  noLeak(o)
+  assert.equal(o, 'a [b [c]] and ')
+})
+test('r2-3: reference definitions inside containers or with next-line destination', () => {
+  for (const s of [
+    '[x][r]\n\n> [r]: Dailys/2026/secret-diary.md',
+    '- [x][r]\n\n- [r]: Dailys/2026/secret-diary.md',
+    '[x][r]\n\n[r]:\n  Dailys/2026/secret-diary.md',
+    '[x][r]\n\n   [r]:\n  <Dailys/2026/secret-diary.md> "t"\n',
+  ]) {
+    const o = out(s)
+    noLeak(o)
+    assert.ok(!o.includes('[r]'), JSON.stringify(o))
+  }
+  assert.equal(
+    out('[p][r]\n\n> [r]: Porta%20Pro%20%26%20KPH40.md'),
+    '[p][r]\n\n> [r]: Projects/Headphones/Koss/Porta%20Pro%20&%20KPH40',
+  )
+})
+test('r2-4: unclosed <a> and other elements with relative href/src', () => {
+  const o = out('<a href="Dailys/2026/secret-diary.md">text')
+  noLeak(o)
+  assert.equal(o, 'text')
+  assert.equal(
+    out('<a href="Porta%20Pro%20%26%20KPH40.md">P'),
+    '<a href="Projects/Headphones/Koss/Porta%20Pro%20&%20KPH40">P',
+  )
+  for (const s of [
+    '<iframe src="Dailys/2026/secret-diary.md"></iframe>',
+    '<video src="../../Dailys/2026/secret-diary.md">',
+    '<source src="Dailys/2026/secret-diary.md">',
+    '<embed src="Dailys/2026/secret-diary.md">',
+    '<area href="Dailys/2026/secret-diary.md">',
+    '<img srcset="Dailys/2026/secret-diary.md 2x" src="../../Media/pic.png">',
+    '<video poster="Dailys/2026/secret-diary.md">',
+    '<iframe  src = Dailys/2026/secret-diary.md >',
+  ]) {
+    noLeak(out(s))
+  }
+  const r = rw('<video controls src="../../Media/pic.png"></video>')
+  assert.equal(r.body, '<video controls src="Media/pic.png"></video>')
+  assert.ok(r.attachments.has('Media/pic.png'))
+  assert.equal(out('<iframe src="https://example.com/x.md"></iframe>'), '<iframe src="https://example.com/x.md"></iframe>')
+})
+test('r2-4: failSafe removes any remaining tag with a relative href/src', async () => {
+  const { failSafe } = await import('../links.mjs')
+  assert.equal(failSafe('a <embed src="Dailys/x.md"> b <a href="#top">t</a>'), 'a  b <a href="#top">t</a>')
+})
+test('r2-minor: placeholder characters in input cannot be injected', () => {
+  const o = out('\uE0000\uE001 [[Porta Pro & KPH40]]')
+  assert.ok(!o.includes('undefined'), o)
+  assert.ok(!/[\uE000\uE001]/.test(o), o)
+  assert.ok(o.endsWith('[[Projects/Headphones/Koss/Porta Pro & KPH40|Porta Pro & KPH40]]'), o)
+  assert.equal(o.split('[[Projects').length, 2, o)
+  assert.ok(!out('\uE0009\uE001 x').includes('undefined'))
+})
+test('r2-minor: wikilink alias spanning one newline', async () => {
+  const o = out('[[Dailys/2026/secret-diary|a\nb]]')
+  noLeak(o)
+  assert.equal(o, 'a\nb')
+  const { failSafe } = await import('../links.mjs')
+  noLeak(failSafe('[[Dailys/2026/secret-diary|a\nb]]'))
+})
