@@ -186,6 +186,8 @@ export async function sync({ vault, out }) {
   let hits
   try {
     wipe()
+    if (!outputs.has('index.md'))
+      throw new Error('sync: no home note: Sam’s World/Samuel’s Lab/Samuel’s Lab.md is not marked publish: true')
     for (const [cp, text] of outputs) {
       const dest = path.join(outAbs, cp)
       fs.mkdirSync(path.dirname(dest), { recursive: true })

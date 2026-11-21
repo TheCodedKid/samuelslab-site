@@ -10,24 +10,43 @@ Never edit it by hand: each sync wipes and rewrites it. Only notes with
 
 ## Emergency purge
 
-If a file was published by mistake:
+If a file was published by mistake. Purging is best-effort: forks, clones and
+cached views may keep the data. Any leaked secret (password, key, token) must
+be rotated, not just removed.
 
-1. Remove it from the entire git history:
+1. Make a fresh clone and work only there (filter-repo rewrites history):
+
+   ```sh
+   git clone https://github.com/TheCodedKid/samuelslab-site.git purge
+   cd purge
+   ```
+
+2. Remove the file from the entire git history:
 
    ```sh
    git filter-repo --path content/<file> --invert-paths
    ```
 
-2. Re-add the remote if filter-repo dropped it, then force-push:
+3. `git filter-repo` drops the `origin` remote, so add it back:
+
+   ```sh
+   git remote add origin https://github.com/TheCodedKid/samuelslab-site.git
+   ```
+
+4. Force-push `v5`:
 
    ```sh
    git push --force origin v5
    ```
 
-3. Contact GitHub Support and ask them to purge cached views of the
-   removed commits and the old Pages deployment.
+   This re-triggers `deploy.yml`, which replaces the live site. Confirm the
+   run succeeds (`gh run watch -R TheCodedKid/samuelslab-site`) and that the
+   file is gone from the deployed site.
 
-Also remove the note's `publish: true` in the vault so `/publish` does not
+5. Contact GitHub Support and ask them to purge cached views of the removed
+   commits and the old Pages deployment.
+
+Also remove `publish: true` from the note in the vault so `/publish` does not
 re-export it.
 
 ## License

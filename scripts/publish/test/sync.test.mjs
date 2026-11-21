@@ -282,3 +282,16 @@ test('refuses a dangling symlink out pointing into the vault', async () => {
   await assert.rejects(() => sync({ vault, out: link }), /refus/i)
   assert.ok(!fs.existsSync(path.join(vault, 'newdir')))
 })
+
+test('no published home note fails closed and wipes out back to .gitkeep', async () => {
+  const vault = makeVault({
+    [path.join(LAB, 'Samuel’s Lab.md')]: '---\npublish: false\n---\n# Hi\n',
+  })
+  const out = makeOut()
+  fs.writeFileSync(path.join(out, 'stale.md'), 'old')
+  await assert.rejects(
+    () => quiet(() => sync({ vault, out })),
+    /no home note: Sam’s World\/Samuel’s Lab\/Samuel’s Lab\.md is not marked publish: true/,
+  )
+  assert.deepEqual(fs.readdirSync(out), ['.gitkeep'])
+})
