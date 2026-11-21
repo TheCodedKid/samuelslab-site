@@ -1,3 +1,40 @@
 @use "./variables.scss" as *;
 
-// put your custom CSS here!
+$accent: #ffc1cb;
+$mono: "Courier New", "Courier Prime", monospace;
+
+body,
+h1, h2, h3, h4, h5, h6,
+code, pre, .text-highlight {
+  font-family: $mono;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: $accent;
+}
+
+a {
+  color: $accent;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+blockquote {
+  border-left: 4px solid $accent;
+  background-color: #333333;
+  font-style: italic;
+}
+
+table,
+th,
+td {
+  border: 1px solid $accent;
+}
+
+::selection {
+  background: $accent;
+  color: #222222;
+}
