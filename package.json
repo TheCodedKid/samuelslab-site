@@ -22,6 +22,7 @@
     "prebuild": "npm run install-plugins",
     "changeset": "changeset",
     "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
+    "sync": "node scripts/publish/sync.mjs",
     "test:publish": "node --test \"scripts/publish/test/**/*.test.mjs\""
   },
   "engines": {
