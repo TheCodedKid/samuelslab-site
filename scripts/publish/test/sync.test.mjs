@@ -295,3 +295,30 @@ test('no published home note fails closed and wipes out back to .gitkeep', async
   )
   assert.deepEqual(fs.readdirSync(out), ['.gitkeep'])
 })
+
+test('leak guard: top-level unpublished note is not matched by its bare name', async () => {
+  const vault = makeVault({
+    'Readme.md': '# private readme\n',
+    [path.join(LAB, 'Projects', 'Prose.md')]: '---\npublish: true\n---\nPlease see the readme for details.\n',
+  })
+  const out = makeOut()
+  const res = await quiet(() => sync({ vault, out }))
+  assert.ok(res.notes.length > 0)
+})
+
+test('leak guard: top-level unpublished note is matched by its .md name', async () => {
+  const vault = makeVault({
+    'Readme.md': '# private readme\n',
+    [path.join(LAB, 'Projects', 'Named.md')]: '---\npublish: true\n---\n```\nsee Readme.md\n```\n',
+  })
+  const out = makeOut()
+  const errs = []
+  const orig = console.error
+  console.error = (...a) => errs.push(a.join(' '))
+  try {
+    await assert.rejects(() => sync({ vault, out }), /leak/i)
+  } finally {
+    console.error = orig
+  }
+  assert.ok(errs.some((e) => /Named\.md: readme\.md/i.test(e)), errs.join('\n'))
+})

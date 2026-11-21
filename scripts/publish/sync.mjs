@@ -99,7 +99,7 @@ const isBinary = (buf) => buf.subarray(0, 8192).includes(0)
 
 /**
  * Scan every text file under `outDir` for private vault paths.
- * unpublishedPaths: vault-relative note paths (with .md); each is checked with and without `.md`.
+ * unpublishedPaths: vault-relative note paths (with .md); each is checked with and without `.md`, except top-level notes (no `/`), which match only with `.md`.
  * privateFolders: vault-relative folder paths.
  * Returns hits as `<content file>: <matched string>` (at most one per file per private path).
  */
@@ -107,7 +107,8 @@ export function leakGuard(outDir, { unpublishedPaths = [], privateFolders = [] }
   const needles = [] // [forms (lowercase, longest first), ...]
   for (const p of unpublishedPaths) {
     const noExt = p.replace(/\.md$/i, '')
-    needles.push([...formsOf(p), ...formsOf(noExt)])
+    // Top-level notes (no `/`): the bare name is too generic ("claude"), match only `Name.md`.
+    needles.push(p.includes('/') ? [...formsOf(p), ...formsOf(noExt)] : formsOf(p))
   }
   for (const p of privateFolders) needles.push(formsOf(p))
   const prepared = needles.map((forms) =>
