@@ -212,3 +212,43 @@ test('fixture vault is not mutated', () => {
   const out = execFileSync('git', ['status', '--porcelain', '--', fixture], { encoding: 'utf8' })
   assert.equal(out, '')
 })
+
+test('frontmatter wikilinks are rewritten like body links', async () => {
+  const vault = makeVault({
+    [path.join(LAB, 'Front.md')]:
+      '---\npublish: true\nup: "[[Private Thing]]"\nrelated: ["[[Private Thing]]", "[[secret-diary]]", "[[Porta Pro & KPH40]]"]\nnested:\n  deep: "[[Private Thing#Heading]]"\ncover: "![[pic.png]]"\ntitle: "[[Keep Title]]"\n---\nBody\n',
+  })
+  const out = makeOut()
+  const res = await quiet(() => sync({ vault, out }))
+  const raw = fs.readFileSync(path.join(out, 'Front.md'), 'utf8')
+  assert.ok(!raw.includes('[[Private Thing'), raw)
+  assert.ok(!raw.includes('[[secret-diary'), raw)
+  const fm = matter(raw).data
+  assert.equal(fm.up, 'Private Thing')
+  assert.equal(fm.related[0], 'Private Thing')
+  assert.equal(fm.related[1], 'secret-diary')
+  assert.equal(fm.related[2], '[[Projects/Headphones/Koss/Porta Pro & KPH40|Porta Pro & KPH40]]')
+  assert.equal(fm.nested.deep, 'Private Thing > Heading')
+  assert.equal(fm.cover, '![[Media/pic.png]]')
+  assert.equal(fm.title, '[[Keep Title]]')
+  assert.ok(res.attachments.includes('Media/pic.png'))
+  assert.ok(fs.existsSync(path.join(out, 'Media/pic.png')))
+})
+
+test('refuses not-yet-existing out under a symlink into the vault', async () => {
+  const vault = makeVault()
+  const link = path.join(tmp('lnk'), 'L')
+  fs.symlinkSync(vault, link)
+  await assert.rejects(() => sync({ vault, out: path.join(link, 'newdir', 'sub') }), /refus/i)
+  assert.ok(!fs.existsSync(path.join(vault, 'newdir')))
+})
+
+test('a failed scrub wipes out back to .gitkeep', async () => {
+  const vault = makeVault({
+    [path.join(LAB, 'Doc.md')]: '---\npublish: true\n---\n![[broken.pdf]]\n',
+  })
+  fs.writeFileSync(path.join(vault, 'Media', 'broken.pdf'), 'this is not a pdf at all\n')
+  const out = makeOut()
+  await assert.rejects(() => quiet(() => sync({ vault, out })), /scrub/i)
+  assert.deepEqual(fs.readdirSync(out), ['.gitkeep'])
+})

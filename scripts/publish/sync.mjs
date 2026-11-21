@@ -17,12 +17,19 @@ const KEEP = '.gitkeep'
 const nfc = (s) => s.normalize('NFC')
 const toPosix = (p) => p.split(path.sep).join('/')
 
+/** Absolute path with symlinks resolved, even when the tail does not exist yet. */
 const realish = (p) => {
-  const abs = path.resolve(p)
-  try {
-    return fs.realpathSync(abs)
-  } catch {
-    return abs
+  let head = path.resolve(p)
+  const tail = []
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync(head), ...tail)
+    } catch {
+      const parent = path.dirname(head)
+      if (parent === head) return path.resolve(p)
+      tail.unshift(path.basename(head))
+      head = parent
+    }
   }
 }
 const isInside = (child, parent) => {
@@ -49,6 +56,22 @@ function walkVault(vault) {
     else if (e.isFile()) files.push(rel)
   }
   return { files, dirs }
+}
+
+const FM_SKIP = new Set(['publish', 'title', 'aliases', 'tags'])
+
+/** Recursively rewrite link-bearing strings in cloned frontmatter (top-level skip keys untouched). */
+function rewriteFrontmatter(data, rewrite) {
+  const walk = (v) => {
+    if (typeof v === 'string') return v.includes('[[') || v.includes('](') ? rewrite(v) : v
+    if (Array.isArray(v)) return v.map(walk)
+    if (v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype) {
+      for (const k of Object.keys(v)) v[k] = walk(v[k])
+    }
+    return v
+  }
+  for (const k of Object.keys(data)) if (!FM_SKIP.has(k)) data[k] = walk(data[k])
+  return data
 }
 
 const encodeUrl = (s) => encodeURI(s).replace(/\(/g, '%28').replace(/\)/g, '%29')
@@ -120,7 +143,13 @@ export async function sync({ vault, out }) {
     warnings.push(...r.warnings)
     for (const [a, acp] of r.attachments) attachments.set(a, acp)
 
-    const data = structuredClone(note.data)
+    const data = rewriteFrontmatter(structuredClone(note.data), (v) => {
+      const fr = rewriteLinks(v, { from: rel, resolve, published, attachmentOwners })
+      linksRewritten += fr.rewritten
+      warnings.push(...fr.warnings)
+      for (const [a, acp] of fr.attachments) attachments.set(a, acp)
+      return fr.body
+    })
     if (cp === 'index.md') {
       data.title = HOME_TITLE
       const prev = data.aliases == null ? [] : Array.isArray(data.aliases) ? data.aliases : [data.aliases]
@@ -132,36 +161,50 @@ export async function sync({ vault, out }) {
     if (outputs.has(acp)) throw new Error(`sync: attachment and note both map to ${acp}`)
 
   // Wipe `out`, keeping only .gitkeep.
+  const wipe = () => {
+    for (const name of fs.readdirSync(outAbs)) {
+      if (name === KEEP) continue
+      fs.rmSync(path.join(outAbs, name), { recursive: true, force: true })
+    }
+  }
   fs.mkdirSync(outAbs, { recursive: true })
-  for (const name of fs.readdirSync(outAbs)) {
-    if (name === KEEP) continue
-    fs.rmSync(path.join(outAbs, name), { recursive: true, force: true })
-  }
+  let hits
+  try {
+    wipe()
+    for (const [cp, text] of outputs) {
+      const dest = path.join(outAbs, cp)
+      fs.mkdirSync(path.dirname(dest), { recursive: true })
+      fs.writeFileSync(dest, text)
+    }
+    for (const [rel, cp] of attachments) {
+      const src = filesAbs.get(rel)
+      if (!src) throw new Error(`sync: attachment source missing for ${cp}`)
+      const dest = path.join(outAbs, cp)
+      fs.mkdirSync(path.dirname(dest), { recursive: true })
+      fs.copyFileSync(src, dest)
+      await scrubAttachment(dest)
+    }
 
-  for (const [cp, text] of outputs) {
-    const dest = path.join(outAbs, cp)
-    fs.mkdirSync(path.dirname(dest), { recursive: true })
-    fs.writeFileSync(dest, text)
+    // Leak guard (fail closed): every private note path / folder must be absent from `out`.
+    const { files: allFiles, dirs } = walkVault(vaultAbs)
+    const unpublishedPaths = allFiles.filter((f) => /\.md$/i.test(f) && !published.has(f))
+    const pubDirs = new Set()
+    for (const p of published) {
+      const segs = p.split('/')
+      for (let i = 1; i < segs.length; i++) pubDirs.add(segs.slice(0, i).join('/'))
+    }
+    const privateFolders = dirs.filter((d) => d.includes('/') && !pubDirs.has(d))
+    hits = leakGuard(outAbs, { unpublishedPaths, privateFolders })
+  } catch (err) {
+    // Never leave a partial (possibly unscrubbed) output behind.
+    try {
+      wipe()
+    } catch (wipeErr) {
+      console.error(`sync: cleanup of ${outAbs} failed: ${wipeErr.message}`)
+    }
+    throw err
   }
-  for (const [rel, cp] of attachments) {
-    const src = filesAbs.get(rel)
-    if (!src) throw new Error(`sync: attachment source missing for ${cp}`)
-    const dest = path.join(outAbs, cp)
-    fs.mkdirSync(path.dirname(dest), { recursive: true })
-    fs.copyFileSync(src, dest)
-    await scrubAttachment(dest)
-  }
-
-  // Leak guard (fail closed): every private note path / folder must be absent from `out`.
-  const { files: allFiles, dirs } = walkVault(vaultAbs)
-  const unpublishedPaths = allFiles.filter((f) => /\.md$/i.test(f) && !published.has(f))
-  const pubDirs = new Set()
-  for (const p of published) {
-    const segs = p.split('/')
-    for (let i = 1; i < segs.length; i++) pubDirs.add(segs.slice(0, i).join('/'))
-  }
-  const privateFolders = dirs.filter((d) => d.includes('/') && !pubDirs.has(d))
-  const hits = leakGuard(outAbs, { unpublishedPaths, privateFolders })
+  // A leak-guard failure deliberately leaves `out` in place for inspection.
   if (hits.length) {
     for (const h of hits) console.error(`LEAK ${h}`)
     const err = new Error(`sync: leak guard found ${hits.length} private path(s) in ${outAbs}; output left for inspection`)
