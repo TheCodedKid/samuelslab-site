@@ -230,7 +230,7 @@ test('frontmatter wikilinks are rewritten like body links', async () => {
   assert.equal(fm.related[2], '[[Projects/Headphones/Koss/Porta Pro & KPH40|Porta Pro & KPH40]]')
   assert.equal(fm.nested.deep, 'Private Thing > Heading')
   assert.equal(fm.cover, '![[Media/pic.png]]')
-  assert.equal(fm.title, '[[Keep Title]]')
+  assert.equal(fm.title, 'Keep Title')
   assert.ok(res.attachments.includes('Media/pic.png'))
   assert.ok(fs.existsSync(path.join(out, 'Media/pic.png')))
 })
@@ -251,4 +251,34 @@ test('a failed scrub wipes out back to .gitkeep', async () => {
   const out = makeOut()
   await assert.rejects(() => quiet(() => sync({ vault, out })), /scrub/i)
   assert.deepEqual(fs.readdirSync(out), ['.gitkeep'])
+})
+
+test('frontmatter: aliases, tags, title and object keys are rewritten too', async () => {
+  const vault = makeVault({
+    [path.join(LAB, 'Keys.md')]:
+      '---\npublish: true\ntitle: "[[Private Thing]]"\naliases: ["[[Private Thing]]", plain]\ntags: ["[[secret-diary]]"]\nmap:\n  "[[Private Thing]]": x\n  "[[Porta Pro & KPH40]]": y\n---\nBody\n',
+    [path.join(LAB, 'Samuel’s Lab.md')]: '---\npublish: true\naliases: ["[[Private Thing]]"]\n---\n# Hi\n',
+  })
+  const out = makeOut()
+  await quiet(() => sync({ vault, out }))
+  const raw = fs.readFileSync(path.join(out, 'Keys.md'), 'utf8')
+  assert.ok(!raw.includes('[[Private Thing'), raw)
+  assert.ok(!raw.includes('[[secret-diary'), raw)
+  const fm = matter(raw).data
+  assert.equal(fm.title, 'Private Thing')
+  assert.deepEqual(fm.aliases, ['Private Thing', 'plain'])
+  assert.deepEqual(fm.tags, ['secret-diary'])
+  assert.deepEqual(Object.keys(fm.map), ['Private Thing', '[[Projects/Headphones/Koss/Porta Pro & KPH40|Porta Pro & KPH40]]'])
+  assert.equal(fm.map['Private Thing'], 'x')
+  const home = matter(fs.readFileSync(path.join(out, 'index.md'), 'utf8')).data
+  assert.equal(home.title, 'Samuel’s Lab')
+  assert.deepEqual(home.aliases, ['Private Thing', 'Samuel’s Lab'])
+})
+
+test('refuses a dangling symlink out pointing into the vault', async () => {
+  const vault = makeVault()
+  const link = path.join(tmp('dangle'), 'L')
+  fs.symlinkSync(path.join(vault, 'newdir'), link)
+  await assert.rejects(() => sync({ vault, out: link }), /refus/i)
+  assert.ok(!fs.existsSync(path.join(vault, 'newdir')))
 })

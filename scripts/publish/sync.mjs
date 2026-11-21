@@ -25,6 +25,13 @@ const realish = (p) => {
     try {
       return path.join(fs.realpathSync(head), ...tail)
     } catch {
+      // A dangling symlink: follow its target instead of treating it as a missing name.
+      const st = fs.lstatSync(head, { throwIfNoEntry: false })
+      if (st?.isSymbolicLink()) {
+        if (tail.length > 64) throw new Error(`sync: symlink loop at ${head}`)
+        head = path.resolve(path.dirname(head), fs.readlinkSync(head))
+        continue
+      }
       const parent = path.dirname(head)
       if (parent === head) return path.resolve(p)
       tail.unshift(path.basename(head))
@@ -58,20 +65,28 @@ function walkVault(vault) {
   return { files, dirs }
 }
 
-const FM_SKIP = new Set(['publish', 'title', 'aliases', 'tags'])
-
-/** Recursively rewrite link-bearing strings in cloned frontmatter (top-level skip keys untouched). */
+/**
+ * Recursively rewrite link-bearing strings (values and object keys) in cloned frontmatter.
+ * Only the top-level `publish` key is left untouched.
+ */
 function rewriteFrontmatter(data, rewrite) {
-  const walk = (v) => {
-    if (typeof v === 'string') return v.includes('[[') || v.includes('](') ? rewrite(v) : v
-    if (Array.isArray(v)) return v.map(walk)
+  const hasLink = (s) => s.includes('[[') || s.includes('](')
+  const walk = (v, top = false) => {
+    if (typeof v === 'string') return hasLink(v) ? rewrite(v) : v
+    if (Array.isArray(v)) return v.map((x) => walk(x))
     if (v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype) {
-      for (const k of Object.keys(v)) v[k] = walk(v[k])
+      const o = {}
+      for (const [k, x] of Object.entries(v)) {
+        const key = top && k === 'publish' ? k : hasLink(k) ? rewrite(k) : k
+        const val = top && k === 'publish' ? x : walk(x)
+        // defineProperty so a YAML key like `__proto__` stays an ordinary own key
+        Object.defineProperty(o, key, { value: val, enumerable: true, writable: true, configurable: true })
+      }
+      return o
     }
     return v
   }
-  for (const k of Object.keys(data)) if (!FM_SKIP.has(k)) data[k] = walk(data[k])
-  return data
+  return walk(data, true)
 }
 
 const encodeUrl = (s) => encodeURI(s).replace(/\(/g, '%28').replace(/\)/g, '%29')
