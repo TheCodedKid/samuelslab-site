@@ -48,6 +48,45 @@ test('STEP FILE_NAME header is blanked, rest preserved byte-for-byte', async () 
   assert.ok(after.endsWith("ENDSEC;\nDATA;\n#1=POINT('Samuel',(0.,0.,0.));\nENDSEC;\nEND-ISO-10303-21;\n"))
 })
 
+function buildPdf() {
+  const objs = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] /Resources << >> >>',
+    '<< /Author (SECRETNAME) /Creator (SECRETCREATOR) >>',
+  ]
+  let out = '%PDF-1.4\n'
+  const offs = []
+  objs.forEach((o, i) => {
+    offs.push(out.length)
+    out += `${i + 1} 0 obj\n${o}\nendobj\n`
+  })
+  const xref = out.length
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`
+  for (const o of offs) out += `${String(o).padStart(10, '0')} 00000 n \n`
+  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R /Info 4 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return out
+}
+
+test('PDF base Info dictionary is not recoverable from raw bytes', async () => {
+  const f = path.join(await tmp(), 'secret.pdf')
+  await writeFile(f, buildPdf(), 'latin1')
+  assert.ok((await readFile(f, 'latin1')).includes('SECRETNAME'))
+  await scrubAttachment(f)
+  const raw = await readFile(f, 'latin1')
+  assert.ok(!raw.includes('SECRETNAME'))
+  assert.ok(!raw.includes('SECRETCREATOR'))
+  assert.match((await run('exiftool', ['-FileType', f])).stdout, /PDF/)
+  await run('qpdf', ['--check', f])
+})
+
+test('STEP FILE_NAME record ends at the real `);`, not one inside a quoted string', async () => {
+  const f = path.join(await tmp(), 'q.step')
+  await writeFile(f, "HEADER;\nFILE_NAME('a);b','2026',('Sam''s);X'),('Org'),'pp','SW','');\nFILE_SCHEMA(('AP214'));\nENDSEC;\n")
+  await scrubAttachment(f)
+  assert.equal(await readFile(f, 'utf8'), "HEADER;\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('AP214'));\nENDSEC;\n")
+})
+
 test('other types untouched; exiftool failure throws naming the file', async () => {
   const d = await tmp()
   const t = path.join(d, 'n.txt')

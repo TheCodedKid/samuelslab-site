@@ -10,7 +10,7 @@
     in {
       devShells = forAll (pkgs: {
         default = pkgs.mkShell {
-          packages = with pkgs; [ nodejs_24 gitleaks exiftool git ];
+          packages = with pkgs; [ nodejs_24 gitleaks exiftool qpdf git ];
         };
       });
     };
