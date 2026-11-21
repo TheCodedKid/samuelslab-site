@@ -1,0 +1,9 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('test part'),'2;1');
+FILE_NAME('part.step','2026-01-01T00:00:00',('Sam Author'),('ACME Org'),'CAD 1.0','Fusion 360','');
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));
+ENDSEC;
+DATA;
+ENDSEC;
+END-ISO-10303-21;
