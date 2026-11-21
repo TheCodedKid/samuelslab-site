@@ -116,7 +116,7 @@ test('markdown link to unpublished note becomes its text; embed removed', () => 
 test('image embed with size rewritten to content path, recorded', () => {
   const r = rw('![[pic.png|300]]')
   assert.equal(r.body, '![[Media/pic.png|300]]')
-  assert.deepEqual([...r.attachments], ['Media/pic.png'])
+  assert.deepEqual([...r.attachments], [['Media/pic.png', 'Media/pic.png']])
 })
 test('markdown links: relative attachment and %20-encoded note', () => {
   const r = rw('[doc](../../Media/doc.pdf) and [p](Porta%20Pro%20%26%20KPH40.md)')
@@ -179,4 +179,120 @@ test('link wrapping an image: both resolved', () => {
     out('[![x](Media/pic.png)](Dailys/2026/secret-diary.md)'),
     '![x](Media/pic.png)',
   )
+})
+
+// --- review fixes: leak cases ---
+
+const noLeak = (o) => {
+  assert.ok(!o.includes('Dailys'), `leaked Dailys: ${JSON.stringify(o)}`)
+  assert.ok(!o.includes('secret-diary/'), `leaked secret-diary/: ${JSON.stringify(o)}`)
+  assert.ok(!/secret[^\n]*\.md/.test(o), `leaked .md path: ${JSON.stringify(o)}`)
+}
+
+test('fix1: fence inside blockquote closes when the quote ends', () => {
+  const o = out('> ```\n> code\n\nafter [[Dailys/2026/secret-diary]]')
+  noLeak(o)
+  assert.equal(o, '> ```\n> code\n\nafter secret-diary')
+})
+test('fix1: fence inside list item closes when indentation ends', () => {
+  const o = out('- item\n  ```\n  code\n\npara [[Dailys/2026/secret-diary]]')
+  noLeak(o)
+  assert.equal(o, '- item\n  ```\n  code\n\npara secret-diary')
+})
+test('fix1: fence inside list item stays open across blank line at its indent', () => {
+  const s = '- item\n  ```\n  a\n\n  [[secret-diary]]\n  ```\n'
+  assert.equal(out(s), s)
+})
+test('fix2: escaped backtick does not open a code span', () => {
+  const o = out('use \\` here [[Dailys/2026/secret-diary]] and `x`')
+  noLeak(o)
+  assert.equal(o, 'use \\` here secret-diary and `x`')
+})
+test('fix3: reference-style links to unpublished note are dropped', () => {
+  const o = out('[x][r] and [R][] and [r]\n\n[r]: Dailys/2026/secret-diary.md "t"\n')
+  noLeak(o)
+  assert.equal(o, 'x and R and r\n\n')
+  const img = out('![a][i]\n\n[i]: <Dailys/2026/secret-diary.md>')
+  noLeak(img)
+  assert.equal(img, '\n\n')
+})
+test('fix3: reference definition to published note / attachment is rewritten', () => {
+  const r = rw('[p][r] ![i][m]\n\n[r]: Porta%20Pro%20%26%20KPH40.md\n[m]: ../../Media/pic.png')
+  assert.equal(
+    r.body,
+    '[p][r] ![i][m]\n\n[r]: Projects/Headphones/Koss/Porta%20Pro%20&%20KPH40\n[m]: Media/pic.png',
+  )
+  assert.ok(r.attachments.has('Media/pic.png'))
+})
+test('fix3: footnotes and unrelated brackets untouched', () => {
+  const s = 'a[^1] - [ ] task [note]\n\n[^1]: Dailys is a folder'
+  assert.equal(out(s), s)
+})
+test('fix4: HTML a/img with relative targets', () => {
+  const o = out('<a href="../../Dailys/2026/secret-diary.md">my <b>day</b></a> <img src="../../Dailys/2026/secret-diary.md">')
+  noLeak(o)
+  assert.equal(o, 'my <b>day</b> ')
+  const r = rw('<a class="x" href="Porta%20Pro%20%26%20KPH40.md#Mods">P</a> <img alt="p" src=\'../../Media/pic.png\' />')
+  assert.equal(
+    r.body,
+    '<a class="x" href="Projects/Headphones/Koss/Porta%20Pro%20&%20KPH40#Mods">P</a> <img alt="p" src="Media/pic.png" />',
+  )
+  assert.ok(r.attachments.has('Media/pic.png'))
+  const m = rw('<img src="Media/nope.png">')
+  assert.equal(m.body, '')
+  assert.equal(m.warnings.length, 1)
+  assert.equal(out('<a href="https://example.com">e</a>'), '<a href="https://example.com">e</a>')
+})
+test('fix5: wikilink target with nested brackets', () => {
+  const o = out('[[Dailys/2026/secret [draft]]]')
+  noLeak(o)
+  assert.equal(o, 'secret [draft]')
+})
+test('fix6: markdown URL with spaces, bare and angle-bracketed', () => {
+  for (const s of ['[x](Dailys/2026/secret diary.md)', '[x](<Dailys/2026/secret diary.md>)', '[x](Dailys/2026/secret diary.md "t")']) {
+    const o = out(s)
+    noLeak(o)
+    assert.equal(o, 'x')
+  }
+  assert.equal(
+    out('[p](Projects/Headphones/Koss/Porta Pro & KPH40.md)'),
+    '[p](Projects/Headphones/Koss/Porta%20Pro%20&%20KPH40)',
+  )
+})
+test('fix7: fail-safe pass strips any leftover wikilink or relative .md link', async () => {
+  const { failSafe } = await import('../links.mjs')
+  const o = failSafe('a [[Dailys/2026/secret-diary|x]] b ![[Dailys/2026/secret-diary]] c [y](Dailys/2026/secret-diary.md#h) d [[#Local]]\n[z](https://e.com/a.md)')
+  noLeak(o.split('\n')[0])
+  assert.equal(o, 'a secret-diary b  c y d [[#Local]]\n[z](https://e.com/a.md)')
+  // rewritten published links survive the full pipeline including the fail-safe
+  assert.equal(
+    out('[[Porta Pro & KPH40|a [b]]] x'),
+    '[[Projects/Headphones/Koss/Porta Pro & KPH40|a [b]]] x',
+  )
+})
+test('fix7: fail-safe is wired into rewriteLinks (main regex misses 2-level nesting)', () => {
+  const o = out('x [[Dailys/2026/secret [a [b]]]] y [q](Dailys/2026/x [a [b]].md)')
+  noLeak(o)
+})
+test('fix8: attachment in a private folder flattened to Media/', () => {
+  const r = rw('![[Sam’s World/Socki’s Dirt Hole/Secret Idea/diagram.png]] [d](<../Socki’s Dirt Hole/Secret Idea/diagram.png>)')
+  assert.equal(r.body, '![[Media/diagram.png]] [d](Media/diagram.png)')
+  assert.ok(!r.body.includes('Socki') && !r.body.includes('Secret Idea'))
+  assert.deepEqual([...r.attachments], [['Sam’s World/Socki’s Dirt Hole/Secret Idea/diagram.png', 'Media/diagram.png']])
+})
+test('fix8: content-path collision fails closed with a warning', () => {
+  const owners = new Map()
+  const res = buildResolver([], ['Media/a.png', 'Other/a.png'])
+  const r = rewriteLinks('![[Media/a.png]] ![[Other/a.png]] [l](Other/a.png)', { from: 'n.md', resolve: res, published, attachmentOwners: owners })
+  assert.equal(r.body, '![[Media/a.png]]  l')
+  assert.equal(r.attachments.size, 1)
+  assert.ok(r.warnings.some((w) => w.includes('collision')))
+  // shared owners across notes
+  const r2 = rewriteLinks('![[Other/a.png]]', { from: 'm.md', resolve: res, published, attachmentOwners: owners })
+  assert.equal(r2.body, '')
+})
+test('minor: trailing backslash in wikilink target dropped', () => {
+  const o = out('[[Dailys/2026/secret-diary\\]]')
+  noLeak(o)
+  assert.equal(o, 'secret-diary')
 })

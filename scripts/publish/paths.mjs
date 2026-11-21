@@ -16,3 +16,14 @@ export function toSlugTarget(vaultRel) {
   const c = toContentPath(vaultRel)
   return c.endsWith('.md') ? c.slice(0, -3) : c
 }
+
+/**
+ * Vault-relative attachment path -> content-relative path. Lab attachments keep their
+ * folder (prefix stripped); anything else is flattened to `Media/<basename>` so private
+ * folder names never reach the output.
+ */
+export function toAttachmentPath(vaultRel) {
+  const p = nfc(vaultRel)
+  if (p.startsWith(LAB_PREFIX)) return p.slice(LAB_PREFIX.length)
+  return 'Media/' + p.split('/').at(-1)
+}
