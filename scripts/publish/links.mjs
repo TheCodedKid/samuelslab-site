@@ -151,16 +151,17 @@ function splitCode(body) {
         continue
       }
     }
+    const lm = c.quote === 0 && line.match(/^[ \t]*(?:[-*+]|\d{1,9}[.)])(?:[ \t]+|(?=\n)|$)/)
+    // a non-blank line indented less than the list content ends the list context
+    if (!lm && !blank && listIndent !== null && (c.quote > 0 || c.indent < listIndent)) listIndent = null
     const open = line.match(/^[ \t>]*(`{3,}|~{3,})/)
     if (open && !(open[1][0] === '`' && line.slice(open[0].length).includes('`'))) {
       splitInline(buf, push)
       buf = line
-      fence = { mark: open[1], ...c, inList: c.quote === 0 && listIndent !== null && c.indent > 0 }
+      fence = { mark: open[1], ...c, inList: c.quote === 0 && listIndent !== null && c.indent >= listIndent }
       continue
     }
-    const lm = c.quote === 0 && line.match(/^[ \t]*(?:[-*+]|\d{1,9}[.)])(?:[ \t]+|(?=\n)|$)/)
     if (lm) listIndent = lm[0].replace(/\t/g, '    ').length
-    else if (!blank && c.quote === 0 && c.indent === 0) listIndent = null
     buf += line
   }
   if (fence) push(true, buf)
@@ -218,10 +219,24 @@ const LINK_RE = new RegExp(`${WIKI}|${MD}|${REF}`, 'g')
 // destination on the following line.
 const DEF_RE =
   /^((?:[ \t]*>)*[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)?[ \t]*)\[([^\]\n^][^\]\n]*)\]:[ \t]*(?:\n(?:[ \t]*>)*[ \t]*)?(<[^<>\n]*>|[^\s<]\S*)([ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^()\n]*\)))?[ \t]*(?:\n|$)/gm
-const HTML_A =
-  /<a\b([^>]*?)(?<=\s)href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))([^>]*)>([\s\S]*?)<\/a\s*>/gi
-const HTML_TAG =
-  /<([a-zA-Z][\w-]*)\b([^>]*?)(?<=\s)(href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))([^>]*)>/g
+// Attribute-aware tag matching: a '>' inside a quoted attribute value does not end the tag.
+const ATTR_SRC = String.raw`\s+[^\s"'>=/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?`
+const TAG_SRC = String.raw`<([a-zA-Z][\w-]*)((?:${ATTR_SRC})*)(\s*\/?)>`
+const HTML_A = new RegExp(String.raw`<(a)((?:${ATTR_SRC})*)(\s*\/?)>([\s\S]*?)<\/a\s*>`, 'gi')
+const HTML_TAG = new RegExp(TAG_SRC, 'g')
+const ATTR_RE = /\s+([^\s"'>=/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g
+const URL_ATTRS = new Set(['href', 'src', 'srcset', 'poster', 'data', 'action', 'formaction', 'cite', 'background'])
+
+/** True if a URL attribute value (srcset: any candidate) is a relative URL. */
+function isRelativeAttr(name, value) {
+  const v = value.trim()
+  const urls = name === 'srcset' ? v.split(',').map((x) => x.trim().split(/\s+/)[0]) : [v]
+  return urls.some((u) => u && !isExternal(u))
+}
+
+/** Parsed attributes of an attribute string: [{ name (lowercased), value, raw }]. */
+const parseAttrs = (attrs) =>
+  [...attrs.matchAll(ATTR_RE)].map((m) => ({ name: m[1].toLowerCase(), value: m[2] ?? m[3] ?? m[4], raw: m[0] }))
 const URL_ATTR =
   /(?:^|\s)(href|src|srcset|poster|data|action|formaction|cite|background)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi
 
@@ -296,6 +311,12 @@ export function failSafe(text) {
     return bang ? '' : stripMd(lastSeg(pathPart))
   })
   text = stripMdLinks(text)
+  text = text.replace(new RegExp(TAG_SRC, 'g'), (tag, name, attrs) =>
+    parseAttrs(attrs).some((a) => a.value !== undefined && URL_ATTRS.has(a.name) && isRelativeAttr(a.name, a.value))
+      ? ''
+      : tag,
+  )
+  // crude second sweep for malformed tags the attribute-aware pattern cannot match
   return text.replace(/<[a-zA-Z][^>]*>/g, (tag) => (hasRelativeUrlAttr(tag) ? '' : tag))
 }
 
@@ -414,20 +435,39 @@ export function rewriteLinks(body, ctx) {
     })
   }
 
+  /**
+   * Rewrite one HTML tag's URL attributes. Returns a held (placeholder) tag if href/src were
+   * rewritten, `null` if the tag must be dropped (hidden target, or any other relative URL
+   * attribute such as srcset/poster), or `undefined` to leave it unchanged.
+   */
+  const processTag = (tag, attrs, tail) => {
+    const parsed = parseAttrs(attrs).filter((a) => a.value !== undefined && URL_ATTRS.has(a.name))
+    if (!parsed.length) return undefined
+    if (parsed.some((a) => a.name !== 'href' && a.name !== 'src' && isRelativeAttr(a.name, a.value))) return null
+    const rewrites = new Map()
+    for (const a of parsed) {
+      if (a.name !== 'href' && a.name !== 'src') continue
+      const c = classifyUrl(a.value)
+      if (c === null) continue
+      if (c.kind === 'hidden') return null
+      rewrites.set(a.raw, ` ${a.raw.trim().match(/^[^\s"'>=/]+/)[0]}="${c.href}"`)
+    }
+    if (!rewrites.size) return undefined
+    const newAttrs = attrs.replace(ATTR_RE, (m) => rewrites.get(m) ?? m)
+    return hold(`<${tag}${newAttrs}${tail}>`)
+  }
+
   const rewriteHtml = (text) =>
     text
-      .replace(HTML_A, (whole, before, q1, q2, q3, after, inner) => {
-        const c = classifyUrl(q1 ?? q2 ?? q3 ?? '')
-        if (c === null) return whole
-        if (c.kind === 'hidden' || hasRelativeUrlAttr(before + ' ' + after)) return inner
-        return hold(`<a${before}href="${c.href}"${after}>`) + inner + '</a>'
+      .replace(HTML_A, (whole, tag, attrs, tail, inner) => {
+        const r = processTag(tag, attrs, tail)
+        if (r === undefined) return whole
+        return r === null ? inner : r + inner + '</a>'
       })
-      // any other tag with href/src, including a lone or unclosed <a ...>
-      .replace(HTML_TAG, (whole, tag, before, attr, q1, q2, q3, after) => {
-        const c = classifyUrl(q1 ?? q2 ?? q3 ?? '')
-        if (c === null) return whole
-        if (c.kind === 'hidden' || hasRelativeUrlAttr(before + ' ' + after)) return ''
-        return hold(`<${tag}${before}${attr}="${c.href}"${after}>`)
+      // any other tag with URL attributes, including a lone or unclosed <a ...>
+      .replace(HTML_TAG, (whole, tag, attrs, tail) => {
+        const r = processTag(tag, attrs, tail)
+        return r === undefined ? whole : (r ?? '')
       })
 
   // placeholder delimiters are reserved; neutralize any in the input

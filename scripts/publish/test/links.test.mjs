@@ -373,3 +373,42 @@ test('r2-minor: wikilink alias spanning one newline', async () => {
   const { failSafe } = await import('../links.mjs')
   noLeak(failSafe('[[Dailys/2026/secret-diary|a\nb]]'))
 })
+
+// --- review round 3 ---
+
+test('r3-1: list fence only when indented to the list content; list context ends', () => {
+  for (const s of [
+    '- a\n\n ```\nfoo\n ```\n [[Dailys/2026/secret-diary]]',
+    '1. a\n\n  ```\nfoo\n  ```\n  [x](Dailys/2026/secret-diary.md)',
+    '1. a\n   ```\n   x\n   ```\n\n  ```\nfoo\n  ```\n  [[Dailys/2026/secret-diary]]',
+  ]) {
+    const o = out(s)
+    noLeak(o)
+    assert.ok(o.includes('foo\n'), o)
+  }
+  const keep = '1. a\n   ```\n   [[secret-diary]]\n   ```\n'
+  assert.equal(out(keep), keep)
+})
+test('r3-2: ">" inside quoted attribute values', () => {
+  for (const [s, want] of [
+    ['<a title="x>y" href="Dailys/2026/secret-diary.md">t</a>', 't'],
+    ['<img alt="a>b" src="Dailys/2026/secret-diary.md">', ''],
+    ['<a data-x=">" href="Dailys/2026/secret-diary.md">t</a>', 't'],
+    ['<a href="Dailys/2026/secret-diary.md" title="a>b">t</a>', 't'],
+    ["<iframe title='>' src=\"Dailys/2026/secret-diary.md\"></iframe>", '</iframe>'],
+  ]) {
+    const o = out(s)
+    noLeak(o)
+    assert.equal(o, want)
+  }
+  assert.equal(
+    out('<a title="x>y" href="Porta%20Pro%20%26%20KPH40.md">P</a>'),
+    '<a title="x>y" href="Projects/Headphones/Koss/Porta%20Pro%20&%20KPH40">P</a>',
+  )
+})
+test('r3-2: failSafe handles ">" inside quoted attribute values', async () => {
+  const { failSafe } = await import('../links.mjs')
+  const o = failSafe('a <embed title="x>y" src="Dailys/2026/secret-diary.md"> b')
+  noLeak(o)
+  assert.equal(o, 'a  b')
+})
