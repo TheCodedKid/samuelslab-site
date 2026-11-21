@@ -11,6 +11,7 @@ export function isPublished(data) {
 export function scanVault(vaultRoot) {
   const notes = new Map()
   const files = []
+  const filesAbs = new Map()
   const entries = fs.readdirSync(vaultRoot, { recursive: true, withFileTypes: true })
   for (const e of entries) {
     if (!e.isFile()) continue
@@ -19,11 +20,18 @@ export function scanVault(vaultRoot) {
     if (EXCLUDED.includes(rel.split('/')[0])) continue
     if (rel.endsWith('.md')) {
       const raw = fs.readFileSync(abs, 'utf8')
-      const { data, content } = matter(raw)
-      notes.set(rel, { data, body: content, raw })
+      let parsed
+      try {
+        // passing an options object disables gray-matter's input-string cache
+        parsed = matter(raw, {})
+      } catch (err) {
+        throw new Error(`Failed to parse frontmatter in ${rel}: ${err.message}`, { cause: err })
+      }
+      notes.set(rel, { data: parsed.data, body: parsed.content, raw, abs })
     } else {
       files.push(rel)
+      filesAbs.set(rel, abs)
     }
   }
-  return { notes, files }
+  return { notes, files, filesAbs }
 }

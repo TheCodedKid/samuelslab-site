@@ -37,3 +37,63 @@ test('isPublished is strict boolean true', () => {
   assert.equal(isPublished({ publish: 'true' }), false)
   assert.equal(isPublished({}), false)
 })
+
+import fs from 'node:fs'
+import os from 'node:os'
+
+test('excluded top-level dirs are never scanned (temp vault)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vault-'))
+  try {
+    for (const d of ['.obsidian', '.trash', '.claude', '.git', 'docs', 'Templates', 'Keep']) {
+      fs.mkdirSync(path.join(root, d))
+      fs.writeFileSync(path.join(root, d, 'x.md'), '---\npublish: true\n---\nbody\n')
+      fs.writeFileSync(path.join(root, d, 'y.png'), 'x')
+    }
+    const { notes, files } = scanVault(root)
+    assert.deepEqual([...notes.keys()], ['Keep/x.md'])
+    assert.deepEqual(files, ['Keep/y.png'])
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+test('bad frontmatter throws with the vault-relative path', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vault-'))
+  try {
+    fs.writeFileSync(path.join(root, 'Bad.md'), '---\na: [unclosed\n---\nbody\n')
+    assert.throws(() => scanVault(root), /Bad\.md/)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+test('identical notes get distinct data objects', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vault-'))
+  try {
+    for (const n of ['A.md', 'B.md']) fs.writeFileSync(path.join(root, n), '---\npublish: true\n---\nsame\n')
+    const { notes } = scanVault(root)
+    const a = notes.get('A.md').data
+    const b = notes.get('B.md').data
+    assert.notEqual(a, b)
+    a.mutated = 1
+    assert.equal(b.mutated, undefined)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+test('abs / filesAbs point at real on-disk paths', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vault-'))
+  try {
+    const nfd = 'Café'
+    fs.mkdirSync(path.join(root, nfd))
+    fs.writeFileSync(path.join(root, nfd, 'n.md'), 'hi')
+    fs.writeFileSync(path.join(root, nfd, 'p.png'), 'x')
+    const { notes, files, filesAbs } = scanVault(root)
+    const rel = 'Café/n.md'
+    assert.ok(notes.has(rel))
+    assert.ok(fs.existsSync(notes.get(rel).abs))
+    assert.equal(notes.get(rel).abs, path.join(root, nfd, 'n.md'))
+    assert.deepEqual(files, ['Café/p.png'])
+    assert.equal(filesAbs.get('Café/p.png'), path.join(root, nfd, 'p.png'))
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
