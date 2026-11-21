@@ -23,6 +23,8 @@
     "changeset": "changeset",
     "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
     "sync": "node scripts/publish/sync.mjs",
+    "check-links": "node scripts/publish/check-links.mjs public",
+    "prepare-publish": "npm run sync -- --vault /home/samuel/Documents/samuelslab --out content && npx quartz build && npm run check-links",
     "test:publish": "node --test \"scripts/publish/test/**/*.test.mjs\""
   },
   "engines": {
