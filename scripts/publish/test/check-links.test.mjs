@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { checkLinks } from '../check-links.mjs'
 
 function site(files) {
@@ -51,4 +53,35 @@ test('reports anchors with a broken class', () => {
   const { broken } = checkLinks(d)
   assert.equal(broken.length, 1)
   assert.equal(broken[0].page, 'index.html')
+})
+
+test('trailing-slash href needs X/index.html, not X.html', () => {
+  const d = site({
+    'index.html': '<a href="./only-file/">a</a><a href="./only-file">b</a><a href="./dir/">c</a>',
+    'only-file.html': '',
+    'dir/index.html': '',
+  })
+  assert.deepEqual(checkLinks(d).broken, [{ page: 'index.html', href: './only-file/' }])
+})
+
+test('single-quoted and unquoted attributes, unquoted class=broken, > in values', () => {
+  const d = site({
+    'index.html': `<a href='./nope1'>a</a><a href=./nope2>b</a><a class=broken>c</a>
+      <a title="a > b" href="./nope3">d</a><a href='./ok'>e</a>`,
+    'ok.html': '',
+  })
+  assert.deepEqual(
+    checkLinks(d).broken.map((b) => b.href),
+    ['./nope1', './nope2', '', './nope3'],
+  )
+})
+
+test('zero pages scanned is reported, and the CLI exits 1', () => {
+  const d = site({ 'readme.txt': 'x' })
+  assert.equal(checkLinks(d).pages, 0)
+  const cli = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'check-links.mjs')
+  const r = spawnSync(process.execPath, [cli, d], { encoding: 'utf8' })
+  assert.equal(r.status, 1)
+  assert.match(r.stderr, /no \.html pages/i)
+  assert.equal(spawnSync(process.execPath, [cli, path.join(d, 'missing')]).status, 1)
 })

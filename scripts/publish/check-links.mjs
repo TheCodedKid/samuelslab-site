@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url'
 
 const SKIP = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i // http(s):, mailto:, data:, //host, #anchor ...
 const ATTR = /\s(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi
-const TAG = /<[a-z][^>]*>/gi
+const TAG =
+  /<[a-zA-Z][\w-]*(?:\s+[^\s"'>=/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*\s*\/?>/g
 
 const decodeEntities = (s) =>
   s
@@ -29,16 +30,19 @@ function walk(dir) {
 
 const isFile = (p) => fs.statSync(p, { throwIfNoEntry: false })?.isFile() ?? false
 
-function exists(root, target) {
+function exists(root, target, dirOnly) {
   const rel = path.relative(root, target)
   if (rel.startsWith('..')) return false
+  // GitHub Pages 404s `X/` when only X.html exists, so a trailing slash needs X/index.html.
+  if (dirOnly) return isFile(path.join(target, 'index.html'))
   return isFile(target) || isFile(target + '.html') || isFile(path.join(target, 'index.html'))
 }
 
 export function checkLinks(publicDir) {
   const root = path.resolve(publicDir)
   const broken = []
-  for (const file of walk(root)) {
+  const files = fs.statSync(root, { throwIfNoEntry: false })?.isDirectory() ? walk(root) : []
+  for (const file of files) {
     const page = path.relative(root, file)
     // Only real markup: drop comments, script/style bodies, and code/pre text.
     const html = fs
@@ -46,8 +50,8 @@ export function checkLinks(publicDir) {
       .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/<(script|style|pre|code)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, (m) => m.match(/^<[^>]*>/)[0])
     for (const [tag] of html.matchAll(TAG)) {
-      const cls = /\sclass\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag)
-      const classes = (cls?.[1] ?? cls?.[2] ?? '').split(/\s+/)
+      const cls = /\sclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(tag)
+      const classes = (cls?.[1] ?? cls?.[2] ?? cls?.[3] ?? '').split(/\s+/)
       let reportedBroken = false
       for (const m of tag.matchAll(ATTR)) {
         const href = decodeEntities(m[1] ?? m[2] ?? m[3] ?? '')
@@ -59,6 +63,7 @@ export function checkLinks(publicDir) {
         if (href === '' || SKIP.test(href)) continue
         let p = href.replace(/[?#].*$/, '')
         if (p === '') continue
+        const dirOnly = p.endsWith('/')
         try {
           p = decodeURIComponent(p)
         } catch {
@@ -67,14 +72,14 @@ export function checkLinks(publicDir) {
         const target = p.startsWith('/')
           ? path.join(root, p)
           : path.resolve(path.dirname(file), p)
-        if (!exists(root, target)) broken.push({ page, href })
+        if (!exists(root, target, dirOnly)) broken.push({ page, href })
       }
       if (!reportedBroken && classes.includes('broken') && /^<a\b/i.test(tag)) {
         broken.push({ page, href: '' })
       }
     }
   }
-  return { broken }
+  return { broken, pages: files.length }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
@@ -83,11 +88,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     console.error('usage: check-links.mjs <publicDir>')
     process.exit(2)
   }
-  const { broken } = checkLinks(dir)
+  const { broken, pages } = checkLinks(dir)
+  if (pages === 0) {
+    console.error(`check-links: no .html pages found in ${dir}; wrong or empty publicDir`)
+    process.exit(1)
+  }
   for (const b of broken) console.log(`${b.page}: ${b.href}`)
   if (broken.length) {
     console.error(`${broken.length} broken link(s)`)
     process.exit(1)
   }
-  console.log('all internal links resolve')
+  console.log(`all internal links resolve (${pages} pages scanned)`)
 }
