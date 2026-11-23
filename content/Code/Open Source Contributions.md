@@ -22,5 +22,9 @@ Pull requests I've sent to projects I didn't start. Mostly Nix packaging and doc
 | [the-unknown/solarust](https://github.com/the-unknown/solarust) | [#1](https://github.com/the-unknown/solarust/pull/1) | add Nix flake support |
 | [socallinuxexpo/scale-network](https://github.com/socallinuxexpo/scale-network) | [#948](https://github.com/socallinuxexpo/scale-network/pull/948) | add samuel as a user |
 
+## Contributed to
+- [EasyEffects](https://github.com/wwmm/easyeffects) — DPDFNet model for Deep Noise Remover
+- [spotatui](https://github.com/LargeModGames/spotatui) · [shrimply](https://github.com/soirihiroka/shrimply)
+
 ---
 [[main/Code|Code]]

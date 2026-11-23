@@ -1,5 +1,10 @@
 ---
 publish: true
+status: finished
+description: 'Mods for the KSC75, Porta Pro and ATH-M50, plus the gear and parts I use'
+tags:
+  - audio
+  - hardware
 ---
 ### Introduction
 
@@ -50,6 +55,9 @@ https://autoeq.app/
 [[Projects/Headphones/Koss/Porta Pro & KPH40/Porta Pro KPH40 MMCX Mod|Porta Pro KPH40 MMCX Mod]]
 
 [[Projects/Headphones/Koss/Porta Pro & KPH40/Porta Pro KPH40 2-Pin Mod|Porta Pro KPH40 2-Pin Mod]]
+
+### Audio-Technica
+[[Projects/Headphones/Audio-Technica/ATH-M50|ATH-M50]]
 
 ### All Models
 

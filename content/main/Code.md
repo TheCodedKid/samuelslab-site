@@ -1,6 +1,8 @@
 ---
 publish: true
 ---
+_code I've written (be nice to me)_
+
 Code I've written, snippets, scripts, and experiments.
 
 ## Projects

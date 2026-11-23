@@ -1,11 +1,23 @@
 ---
 publish: true
 ---
+_finished writeups, guides, me blabbering_
+
 Long-form notes from things I've actually finished or fought through.
 
-- [[Writeups/Getting VirtualBox to play nicely/Getting VirtualBox to play nicely|Getting VirtualBox to play nicely]]
-- [[Writeups/Customizing Windows Terminal|Customizing Windows Terminal]]
-- [[Writeups/Minecraft Containerized (the wocky way)|Minecraft Containerized (the wocky way)]]
+```base
+filters:
+  and:
+    - kind == "writeup"
+views:
+  - type: list
+    name: Writeups
+    order:
+      - file.name
+    sort:
+      - property: file.name
+        direction: ASC
+```
 
 ---
 [[index|Samuel’s Lab]]

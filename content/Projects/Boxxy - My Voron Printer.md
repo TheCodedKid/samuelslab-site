@@ -1,5 +1,14 @@
 ---
 publish: true
+status: finished
+description: >-
+  My Voron 0.1 — a tiny, enclosed, self-built 3D printer instead of yet another
+  Ender
+year: 2022
+tags:
+  - 3d-printing
+  - hardware
+cover: PXL_20230124_003136119.jpg
 ---
 **There was a time when I relied on more inexpensive solutions to 3D printing.**
 

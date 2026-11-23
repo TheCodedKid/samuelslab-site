@@ -1,5 +1,11 @@
 ---
 publish: true
+status: finished
+description: Python script that brings ComSovereign's 5G Mini Tower up from a cold start
+tags:
+  - python
+  - work
+repo: 'https://github.com/TheCodedKid/5gstartup'
 ---
 _"Connecting tomorrow is fun until you sit in the server room with no headphones"_
 

@@ -1,5 +1,13 @@
 ---
 publish: true
+status: finished
+description: >-
+  Linux shell + USB driver that only opens a session while an RP2040 'staff' is
+  plugged in
+tags:
+  - embedded
+  - hardware
+repo: 'https://github.com/TheCodedKid/thewizardkit'
 ---
 _"OOM"_
 

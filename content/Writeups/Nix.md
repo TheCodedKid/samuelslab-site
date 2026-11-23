@@ -1,5 +1,6 @@
 ---
 publish: true
+kind: writeup
 ---
 # Nix
 

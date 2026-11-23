@@ -1,6 +1,8 @@
 ---
 publish: true
 ---
+_ideas I might pick up_
+
 Things rattling around in my head — some half-researched, some just a sentence and a link.
 
 ## Hardware / Embedded

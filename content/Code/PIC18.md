@@ -1,5 +1,11 @@
 ---
 publish: true
+status: finished
+description: 'ECE 3301 coursework for the PIC18F4321 — warts, lab quirks and all'
+tags:
+  - embedded
+  - school
+repo: 'https://github.com/TheCodedKid/PIC18'
 ---
 _"bro, just use avr bro like bro Arduino uses avr bro lik fard"_
 

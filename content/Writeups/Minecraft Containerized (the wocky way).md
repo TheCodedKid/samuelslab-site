@@ -1,5 +1,6 @@
 ---
 publish: true
+kind: writeup
 ---
 _So, you want to host minecraft servers, huh?_
 

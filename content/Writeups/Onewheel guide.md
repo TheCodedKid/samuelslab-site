@@ -1,5 +1,6 @@
 ---
 publish: true
+kind: writeup
 ---
 *Yo, what's up Thomas*
 Writing this for a dude I sold my onewheel to, sorta kinda guide thing.

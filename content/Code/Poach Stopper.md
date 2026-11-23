@@ -1,5 +1,11 @@
 ---
 publish: true
+status: finished
+description: Inline soft-start / relay protection for MIT Mini Cheetah motor controllers
+tags:
+  - pcb
+  - robotics
+repo: 'https://github.com/TheCodedKid/poachstopper'
 ---
 _"cause it's a cheetah"_
 

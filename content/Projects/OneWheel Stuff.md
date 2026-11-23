@@ -1,5 +1,11 @@
 ---
 publish: true
+status: finished
+description: 'Float pads, OneChair and OneWings — mods and add-ons for the OneWheel'
+tags:
+  - hardware
+  - 3d-printing
+repo: 'https://github.com/TheCodedKid/OneWheel-Stuff'
 ---
 **yeah, just mod it idk vesc blah blah**
 

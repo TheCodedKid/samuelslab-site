@@ -1,5 +1,10 @@
 ---
 publish: true
+status: finished
+description: A declarative TidalCycles login sound for NixOS
+tags:
+  - nix
+repo: 'https://github.com/TheCodedKid/des-pas'
 ---
 _"footsteps in the snow"_
 

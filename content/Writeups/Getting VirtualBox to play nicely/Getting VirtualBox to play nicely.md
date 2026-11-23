@@ -1,5 +1,6 @@
 ---
 publish: true
+kind: writeup
 ---
 Hey guys, so I am writing this because virtual box can be a pain at times with shared folder, and maybe explain some stuff too. I wrote this quickly so no judgy. >:]
 

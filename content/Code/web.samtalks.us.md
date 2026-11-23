@@ -1,5 +1,10 @@
 ---
 publish: true
+status: finished
+description: 'My personal website — plain, static HTML. My silly little everything'
+tags:
+  - web
+repo: 'https://github.com/TheCodedKid/web'
 ---
 _"yeah, it is static :sunglasses:"_
 

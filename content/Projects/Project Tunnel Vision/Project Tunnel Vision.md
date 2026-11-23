@@ -1,5 +1,10 @@
 ---
 publish: true
+status: finished
+description: 'Electronics, case and code for Project Tunnel Vision'
+tags:
+  - hardware
+  - embedded
 ---
 ## Build
 

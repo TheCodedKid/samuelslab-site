@@ -1,7 +1,7 @@
 ---
 publish: true
 ---
-Resources
+[[Projects/Project Tunnel Vision/Electronics/Resources/Resources|Resources]]
 
   
 

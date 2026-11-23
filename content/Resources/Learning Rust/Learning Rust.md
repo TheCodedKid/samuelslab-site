@@ -79,6 +79,6 @@ writing the code gets you reps, but explaining it back is what makes it stick.
 [How to deal with annoying Rustaceans](https://www.youtube.com/watch?v=Cwt8TXfZz4c)
 
 ---
-Rust Project Ideas — project ideas to build
+[[Resources/Learning Rust/Rust Project Ideas|Rust Project Ideas]] — project ideas to build
 
-Resources
+[[main/Resources|Resources]]

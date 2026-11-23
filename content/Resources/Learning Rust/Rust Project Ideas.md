@@ -28,4 +28,4 @@ in rust, `btleplug` handles cross-platform BLE (linux/mac/windows). crate would 
 
 ---
 
-Learning Rust
+[[Resources/Learning Rust/Learning Rust|Learning Rust]]
