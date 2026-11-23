@@ -198,7 +198,8 @@ plugins:
   - source: "@quartz-community/footer"
     enabled: true
     options:
-      links: {}
+      links:
+        "you matter :]": https://lab.samuel.fail/writeups/you-matter
     layout:
       position: footer
       priority: 50
