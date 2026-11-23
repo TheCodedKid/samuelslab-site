@@ -14,9 +14,9 @@ configuration:
     fontOrigin: googleFonts
     cdnCaching: true
     typography:
-      header: Courier Prime
-      body: Courier Prime
-      code: Courier Prime
+      header: Space Mono
+      body: IBM Plex Sans
+      code: IBM Plex Mono
     colors:
       lightMode:
         light: "#222222"
