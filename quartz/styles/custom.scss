@@ -204,13 +204,13 @@ body[data-slug="index"] h2#now + ul {
     padding: 0;
   }
 
-  // Columns in order: name · description · tags · year
-  // (separator spans sit between them, hence nth-child 1/3/5/7).
-  & .bases-list-property:nth-child(1) a {
+  // Columns: name · description · tags · year. bases-page omits empty properties,
+  // so pick each column by what it contains, never by position.
+  & .bases-list-property:has(.internal-link) a {
     font-weight: 700;
   }
 
-  & .bases-list-property:nth-child(3) {
+  & .bases-list-property:has(.bases-text) {
     color: #dddddd;
     flex: 1 1 10rem;
     font-family: var(--bodyFont);
@@ -221,11 +221,11 @@ body[data-slug="index"] h2#now + ul {
     }
   }
 
-  & .bases-list-property:nth-child(5) .bases-separator {
+  & .bases-list-property:has(.tag-link) .bases-separator {
     display: none;
   }
 
-  & .bases-list-property:nth-child(7) {
+  & .bases-list-property:has(.bases-number) {
     color: $muted;
     margin-left: auto;
     font-size: 0.85em;
@@ -233,7 +233,7 @@ body[data-slug="index"] h2#now + ul {
 
   // Phones: name, then description on its own line, then tags + year.
   @media #{$mobile} {
-    & .bases-list-property:nth-child(3) {
+    & .bases-list-property:has(.bases-text) {
       flex-basis: 100%;
 
       &::before {
@@ -296,4 +296,9 @@ article .markdown-rendered > p:first-child:has(> em:only-child) {
   width: 100%;
   border-radius: 6px;
   margin: 12px 0;
+}
+
+.pm-summary {
+  margin: 0.4rem 0 0;
+  color: #dddddd;
 }

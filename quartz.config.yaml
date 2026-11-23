@@ -239,5 +239,7 @@ layout:
     tag: {}
     "404":
       template: default
+      positions:
+        beforeBody: []
     canvas: {}
     bases: {}

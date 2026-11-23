@@ -11,12 +11,21 @@ const LINKS: [label: string, slug: string][] = [
   ["about", "main/about"],
 ]
 
-function NavLinks({ fileData }: QuartzComponentProps) {
+function NavLinks({ fileData, cfg, ctx }: QuartzComponentProps) {
   const here = fileData.slug as FullSlug
+  // 404.html is served for missing URLs at any depth, so page-relative links break there.
+  // Use the site root instead, the same way Quartz's own "Return to Homepage" link does.
+  const siteRoot = ctx.argv.serve
+    ? "/"
+    : new URL(`https://${cfg.baseUrl ?? "example.com"}`).pathname
+  const href = (slug: string) =>
+    here === "404"
+      ? `${siteRoot.replace(/\/?$/, "/")}${slug}`
+      : resolveRelative(here, slug as FullSlug)
   return (
     <nav class="nav-links">
       {LINKS.map(([label, slug]) => (
-        <a class="internal" href={resolveRelative(here, slug as FullSlug)}>
+        <a class="internal" href={href(slug)}>
           {label}
         </a>
       ))}

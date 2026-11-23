@@ -10,8 +10,8 @@ const PAGES = [
   'projects/boxxy---my-voron-printer.html',
   'resources/samuel’s-keyboard-palace/index.html', // slug with a typographic apostrophe
   'tags/python.html',
-  '404.html',
 ]
+// 404.html is checked separately (site-absolute links) in review-fixes.test.mjs.
 
 const navLinks = (page) => {
   const [nav] = findAll(loadPage(page), (el) => hasClass(el, 'nav-links'))

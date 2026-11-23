@@ -22,8 +22,12 @@ function ProjectMeta({ fileData }: QuartzComponentProps) {
     ? resolveRelative(slug, slugifyFilePath(`Media/${cover}` as FilePath) as unknown as FullSlug)
     : undefined
 
+  const summary =
+    typeof fm.description === "string" && fm.description.trim() ? fm.description.trim() : undefined
+
   return (
     <>
+      {summary && <p class="pm-summary">{summary}</p>}
       <div class="project-meta">
         <span class="pm-status">
           status <b>{status}</b>
