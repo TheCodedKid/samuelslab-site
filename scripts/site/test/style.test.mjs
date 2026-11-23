@@ -38,7 +38,14 @@ test('homepage cursor blinks and respects reduced motion', () => {
 })
 
 test('tagline rule targets an all-italic first paragraph', () => {
-  assert.ok(/p:first-of-type:has\(>\s*em:only-child\)/.test(css), 'missing: 41')
+  // The rule must name the real parent: note bodies render inside .markdown-rendered.
+  assert.ok(/\.markdown-rendered\s*>\s*p:first-child:has\(>\s*em:only-child\)/.test(css), 'tagline selector')
+  // …and that structure really exists on a Code note.
+  const [body] = findAll(loadPage('code/poach-stopper.html'), (el) => el.tagName === 'div' && (el.properties.className ?? []).includes('markdown-rendered'))
+  const first = body.children.find((c) => c.type === 'element')
+  assert.equal(first.tagName, 'p')
+  const kids = first.children.filter((c) => c.type === 'element' || (c.type === 'text' && c.value.trim()))
+  assert.deepEqual(kids.map((c) => c.tagName), ['em'])
 })
 
 test('no horizontal page scroll from wide content', () => {
